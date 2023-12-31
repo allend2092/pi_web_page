@@ -1,0 +1,69 @@
+#
+#
+#
+I had significant difficulty getting my ASA to allow traffic from the public Internet into my DMZ. I think it has to do with how I configured dhcp on my public facing interface. For future occasions, I'm making notes about how I resolved this:
+
+Initially, config was:
+interface GigabitEthernet1/2
+ nameif outside
+ security-level 1
+ ip address dhcp setroute
+
+Had to apply "static ip address". I say static because its not a real static ip. I looked up the default gateway, public ip and subnet from the dhcp config:
+
+_____________________________________________
+# show route
+
+Codes: L - local, C - connected, S - static, R - RIP, M - mobile, B - BGP
+       D - EIGRP, EX - EIGRP external, O - OSPF, IA - OSPF inter area
+       N1 - OSPF NSSA external type 1, N2 - OSPF NSSA external type 2
+       E1 - OSPF external type 1, E2 - OSPF external type 2, V - VPN
+       i - IS-IS, su - IS-IS summary, L1 - IS-IS level-1, L2 - IS-IS level-2
+       ia - IS-IS inter area, * - candidate default, U - per-user static route
+       o - ODR, P - periodic downloaded static route, + - replicated route
+Gateway of last resort is <default gateway learned from dhcp> to network 0.0.0.0
+
+S*       0.0.0.0 0.0.0.0 [1/0] via <default gateway learned from dhcp>, outside
+_________________________________________
+
+# show int gi1/2
+Interface GigabitEthernet1/2 "outside", is up, line protocol is up
+  Hardware is Accelerator rev01, BW 1000 Mbps, DLY 10 usec
+        Auto-Duplex(Full-duplex), Auto-Speed(1000 Mbps)
+        Input flow control is unsupported, output flow control is off
+        MAC address ecbd.1d85.9958, MTU 1500
+        IP address <my ip address learned from dhcp>, subnet mask <my subnet mask learned from dhcp>
+_____________________________________
+
+
+(output from a "show run all")
+!
+interface GigabitEthernet1/2
+ speed auto
+ duplex auto
+no  flowcontrol send on
+ nameif outside
+ no cts manual
+ security-level 1
+ ip address <ip address> <mask>
+ delay 1
+!
+
+Configure a static route pointing to the learned gateway:
+route outside 0.0.0.0 0.0.0.0 <default gateway learned from dhcp> 1
+
+Next, configure a static nat:
+object network <network object name>
+ host <inside ip that will be mapped to public address>
+ nat (DMZ,outside) static interface
+
+
+access-list outside_access_in extended permit tcp any any eq <port> log notifications
+access-list outside_access_in extended permit tcp any any eq <port> log
+access-list outside_access_in extended deny ip any any
+
+
+From time to time, when the IPS's DHCP lease expires, you may lose internet connectivity. 
+#
+#
+#
